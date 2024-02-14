@@ -1,0 +1,138 @@
+;*******************************************************************************************************************************************
+; Universidad del Valle de Guatemala
+; IE2023 Programación de Microcontroladores
+; main.asm
+; Proyecto: Contador con interrupciones
+; Hardware: ATMEGA328P
+; Created: 2/14/2024 
+; Author : Fatima
+;********************************************************************************************************************************************
+
+;********************************************************************************************************************************************
+;ENCABEZADO
+;********************************************************************************************************************************************
+
+.include "M328PDEF.inc"
+
+.cseg
+.org 0x00
+	JMP MAIN
+.org 0x0008
+	JMP INT_PC
+
+;********************************************************************************************************************************************
+;SETUP
+;********************************************************************************************************************************************
+
+Main: 
+LDI R16, LOW(RAMEND)
+OUT SPL, R16
+LDI R17, HIGH(RAMEND)
+OUT SPH, R17
+
+//****************************************************
+
+//****************************************************
+//Configuración MCU
+//****************************************************
+SETUP:
+	LDI R16, 0b0000_0000 //Configuramos al pueto C como entradas
+	OUT	DDRC, R16
+
+	LDI R16, 0b0000_1111 //Configuración al puerto C como pull ups
+	OUT PORTC, R16
+	
+	LDI R16, 0b0001_1111	//Configuramos el puerto B como salidas
+	OUT DDRB, R16
+
+	
+
+	LDI R16, 0b1111_1111	//Configuramos el puerto D como salidas
+	OUT DDRD, R16
+
+	LDI R16, (1<<PCINT9) | (1<<PCINT8)
+	STS PCMSK1, R16
+
+	LDI R16, (1<<PCIE1)
+	STS PCICR, R16
+
+	SEI
+
+	LDI R18, 0b1111_1111
+	LDI R20, 0x00
+	
+;********************************************************************************************************************************************
+;CODE
+;********************************************************************************************************************************************
+
+LOOP:
+	OUT PORTB, R20
+	RJMP LOOP
+
+
+;********************************************************************************************************************************************
+;INTERRUPCIONES
+;********************************************************************************************************************************************
+
+INT_PC:
+	PUSH R16
+	IN R16, SREG
+	PUSH R16
+
+Display:
+	MOV R19, R18
+	IN R18, PINC
+	CPSE R19, R18	; Antirebote 
+	RJMP Botones  ; Verificar el boton activado
+	JMP SALIR	
+
+Botones:
+	CALL DEL
+	IN R18, PINC
+	MOV R19, R18
+	SBRS R18, PC0 ;Si es el primer boton incrementar
+	JMP Incrementar
+	SBRS R18, PC1
+	JMP Decrementar ;Si es el segundo boton decrementar
+	JMP SALIR
+	
+
+Incrementar:
+	CPI R20, 0b0000_1111
+	BRNE NO_OVERFLOW ; Ejecutar si no es igual
+	LDI R20, 0b0000_0000
+	JMP SALIR
+
+NO_OVERFLOW:
+	INC R20
+	JMP SALIR
+
+Decrementar:
+	CPI R20, 0b0000_0000
+	BRNE NO_UNDERFLOW ; Ejecutar si no es igual
+	LDI R20, 0b0000_1111 ; Llamar subrutina para sacar valores
+	JMP SALIR
+
+NO_UNDERFLOW:
+	DEC R20 ; decrementar la variable
+	JMP SALIR
+
+SALIR:
+	SBI PINC, PC5
+	SBI PCIFR, PCIF1
+
+	POP R16
+	OUT SREG, R16
+	POP R16
+	RETI
+;********************************************************************************************************************************************
+;SUBRUTINAS
+;********************************************************************************************************************************************
+
+DEL:
+	LDI R16, 200
+
+LOOP_DELAY:
+	DEC R16
+	BRNE LOOP_DELAY
+	RET
