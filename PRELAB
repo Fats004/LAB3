@@ -1,4 +1,4 @@
-;*******************************************************************************************************************************************
+va;*******************************************************************************************************************************************
 ; Universidad del Valle de Guatemala
 ; IE2023 Programación de Microcontroladores
 ; main.asm
@@ -100,7 +100,7 @@ Botones:
 Incrementar:
 	CPI R20, 0b0000_1111
 	BRNE NO_OVERFLOW ; Ejecutar si no es igual
-	LDI R20, 0b0000_0000
+	LDI R20, 0b0000_0000 ; poner valor inicial
 	JMP SALIR
 
 NO_OVERFLOW:
@@ -110,7 +110,7 @@ NO_OVERFLOW:
 Decrementar:
 	CPI R20, 0b0000_0000
 	BRNE NO_UNDERFLOW ; Ejecutar si no es igual
-	LDI R20, 0b0000_1111 ; Llamar subrutina para sacar valores
+	LDI R20, 0b0000_1111 ; poner valor nuevo
 	JMP SALIR
 
 NO_UNDERFLOW:
