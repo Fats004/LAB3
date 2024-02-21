@@ -1,0 +1,228 @@
+;*******************************************************************************************************************************************
+; Universidad del Valle de Guatemala
+; IE2023 Programación de Microcontroladores
+; main.asm
+; Proyecto: Contador con interrupciones
+; Hardware: ATMEGA328P
+; Created: 2/14/2024 
+; Author : Fatima
+;********************************************************************************************************************************************
+
+;********************************************************************************************************************************************
+;ENCABEZADO
+;********************************************************************************************************************************************
+
+.include "M328PDEF.inc"
+
+.cseg
+
+.org 0x00
+	JMP TABLASEG
+.org 0x0008
+	JMP INT_PC
+.org 0x0020
+	JMP INT_TMR0
+
+
+;********************************************************************************************************************************************
+;TABLA
+;********************************************************************************************************************************************
+
+TABLASEG: .DB 0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F ;, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71
+
+;********************************************************************************************************************************************
+;STACK POINTER
+;********************************************************************************************************************************************
+
+Main: 
+	LDI R16, LOW(RAMEND)
+	OUT SPL, R16
+	LDI R17, HIGH(RAMEND)
+	OUT SPH, R17
+
+;********************************************************************************************************************************************
+;SETUP
+;********************************************************************************************************************************************
+
+SETUP:
+	LDI R16, (1 << CLKPCE) ;PRESCALER para 8 MHz
+	STS CLKPR, R16 
+	LDI R16, 0b0000_0001
+	STS CLKPR, R16 ;DIVIDIR LA FRECUENCIA POR 16
+
+	LDI R16, 0b0000_0000 //Configuramos al pueto C como entradas
+	OUT	DDRC, R16
+
+	LDI R16, 0b0000_0011 //Configuración al puerto C como pull ups
+	OUT PORTC, R16
+	
+	LDI R16, 0b0011_1111	//Configuramos el puerto B como salidas
+	OUT DDRB, R16
+
+	LDI R16, 0b1111_1111	//Configuramos el puerto D como salidas
+	OUT DDRD, R16
+
+	LDI R16, (1<<PCINT9) | (1<<PCINT8)
+	STS PCMSK1, R16
+
+	LDI R16, (1<<PCIE1)
+	STS PCICR, R16
+
+	LDI R16, (1<<TOIE0)
+	STS TIMSK0, R16
+	SEI
+
+	CALL TimerC ; Subrutina timer 0S
+
+	LDI ZL, LOW (TABLASEG << 1)
+	LDI ZH, HIGH (TABLASEG << 1)
+	LPM R23, Z 
+	OUT PORTD, R23 ; segundo display
+
+	LDI ZL, LOW (TABLASEG << 1)
+	LDI ZH, HIGH (TABLASEG << 1)
+	LPM R22, Z
+	OUT PORTD, R22 ; primer display
+
+	LDI R18, 0b1111_1111
+	LDI R20, 0x00
+	LDI R21, 0X00
+
+	LDI R27, 0
+	LDI R28, 0
+
+	
+;********************************************************************************************************************************************
+;CODE
+;********************************************************************************************************************************************
+
+LOOP:
+	LDI R16, 0b_0001_0000
+	OR R19, R16
+	OUT PORTB, R19
+	OUT PORTD, R22
+
+	CALL DEL
+
+	LDI R16, 0b_0010_0000
+	OR R19, R16
+	OUT PORTB, R19
+	OUT PORTD, R23
+	
+	CALL DEL
+
+
+;********************************************************************************************************************************************
+;INTERRUPCIONES
+;********************************************************************************************************************************************
+
+INT_PC:
+	PUSH R16
+	IN R16, SREG
+	PUSH R16
+
+Contador:
+	MOV R19, R18
+	IN R18, PINC
+	CPSE R19, R18	; Antirebote 
+	RJMP Botones  ; Verificar el boton activado
+	JMP SALIR	
+
+Botones:
+	CALL DEL
+	IN R18, PINC
+	MOV R19, R18
+	SBRS R18, PC0 ;Si es el primer boton incrementar
+	JMP Incrementar
+	SBRS R18, PC1
+	JMP Decrementar ;Si es el segundo boton decrementar
+	JMP SALIR
+	
+
+Incrementar:
+	CPI R20, 0b0000_1111
+	BRNE NO_OVERFLOW ; Ejecutar si no es igual
+	LDI R20, 0b0000_0000
+	JMP SALIR
+
+NO_OVERFLOW:
+	INC R20
+	JMP SALIR
+
+Decrementar:
+	CPI R20, 0b0000_0000
+	BRNE NO_UNDERFLOW ; Ejecutar si no es igual
+	LDI R20, 0b0000_1111 ; Llamar subrutina para sacar valores
+	JMP SALIR
+
+NO_UNDERFLOW:
+	DEC R20 ; decrementar la variable
+	JMP SALIR
+
+SALIR:
+	RETI
+
+INT_TMR0:
+	LDI R25, 178
+	OUT TCNT0, R25
+
+	INC R21
+	
+	CPI R21, 100
+	BRNE BAI
+
+Display:
+	LDI R21, 0x00
+
+	CPI R28, 6 ; Verificar si hay overflow
+	BREQ Over ; Ir a la subrutina sin overflow
+
+	CPI R27, 10 ; Verificar si hay overflow
+	BRNE SinOver ; Ir a la subrutina sin overflow
+
+	INC R28
+	LDI R27, 0
+
+	JMP BAI
+
+SinOver:
+	INC R27
+	JMP BAI
+
+Over:
+	LDI R28, 0
+	JMP BAI
+
+BAI:		
+	LDI ZL, LOW (TABLASEG << 1)
+	LDI ZH, HIGH (TABLASEG << 1)
+	ADD ZL, R27 ; Regresar el puntero a la posicion cero
+	LPM R22, Z ; cargar el valor de la tabla
+
+	LDI ZL, LOW (TABLASEG << 1)
+	LDI ZH, HIGH (TABLASEG << 1)
+	ADD ZL, R28 ; Regresar el puntero a la posicion cero
+	LPM R23, Z ; cargar el valor de la tablaa
+
+	RETI
+
+;********************************************************************************************************************************************
+;SUBRUTINAS
+;********************************************************************************************************************************************
+
+TimerC:
+	LDI R16, (1 << CS02) | (1 << CS00) ; Prescaler 1024
+	OUT TCCR0B, R16
+
+	LDI R25, 178  ; aprox 10ms
+	OUT TCNT0, R25
+
+	RET
+
+DEL:
+	LDI R16, 100
+
+LOOP_DELAY:
+	DEC R16
+	BRNE LOOP_DELAY
+	RET
